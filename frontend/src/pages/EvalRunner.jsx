@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import TraceViewer from '../components/TraceViewer'
 import { evalClaim } from '../api/client'
 import DecisionBadge from '../components/DecisionBadge'
 import Spinner from '../components/Spinner'
@@ -275,6 +276,12 @@ export default function EvalRunner() {
                   </div>
                 </div>
                 <p className="text-slate-500 leading-relaxed pt-1">{docError.error_message}</p>
+              </div>
+            )}
+            {/* Full pipeline trace */}
+            {res?.ok && res?.data?.trace && (
+              <div className="mt-3">
+                <TraceViewer trace={res.data.trace} />
               </div>
             )}
           </div>

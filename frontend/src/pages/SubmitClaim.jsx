@@ -18,7 +18,6 @@ export default function SubmitClaim() {
   const [form, setForm] = useState({
     member_id: '',
     claim_category: 'CONSULTATION',
-    treatment_date: '',
     claimed_amount: '',
     hospital_name: '',
   })
@@ -108,17 +107,17 @@ export default function SubmitClaim() {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label">Treatment Date</label>
-              <input type="date" className="input" value={form.treatment_date}
-                onChange={set('treatment_date')} required />
-            </div>
-            <div>
-              <label className="label">Claimed Amount (₹)</label>
-              <input type="number" className="input" placeholder="1500" min="1"
-                value={form.claimed_amount} onChange={set('claimed_amount')} required />
-            </div>
+          <div>
+            <label className="label">Claimed Amount (₹)</label>
+            <input type="number" className="input" placeholder="1500" min="1"
+              value={form.claimed_amount} onChange={set('claimed_amount')} required />
+          </div>
+
+          <div className="flex items-center gap-2 bg-slate-800/40 border border-slate-700/50 rounded-lg px-3 py-2">
+            <span className="text-slate-400 text-sm">📅</span>
+            <p className="text-xs text-slate-400">
+              <span className="text-slate-300">Treatment date</span> is automatically extracted from your uploaded documents. No need to enter it manually.
+            </p>
           </div>
 
           <div>

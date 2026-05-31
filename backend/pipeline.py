@@ -8,26 +8,6 @@ Two entry points:
 Every stage is wrapped in try/except.
 Failures append to component_failures; the pipeline continues
 with reduced confidence (TC011 behaviour).
-
-Claims Pipeline Orchestrator.
-
-Two entry points:
-  process()      — real submission with file uploads (Agents 1→4 all run)
-  process_eval() — test_cases.json submission (Agents 1+2 mocked from pre-parsed content)
-
-Every stage is wrapped in try/except.
-Failures append to component_failures; the pipeline continues
-with reduced confidence (TC011 behaviour).
-
-Claims Pipeline Orchestrator.
-
-Two entry points:
-  process()      — real submission with file uploads (Agents 1→4 all run)
-  process_eval() — test_cases.json submission (Agents 1+2 mocked from pre-parsed content)
-
-Every stage is wrapped in try/except.
-Failures append to component_failures; the pipeline continues
-with reduced confidence (TC011 behaviour).
 """
 
 from __future__ import annotations
@@ -111,6 +91,9 @@ class ClaimsPipeline:
         except Exception as exc:
             failures.append(f"DocParserAgent: {exc}")
             trace.add(TraceEntry(component="DocParserAgent", error=str(exc)))
+
+        # If treatment_date was not provided, extract from parsed documents
+        submission = self._resolve_submission_fields(submission, parsed_docs)
 
         return await self._run_decision_stages(
             submission, parsed_docs, trace, failures, started
@@ -209,7 +192,20 @@ class ClaimsPipeline:
 
         trace.add(TraceEntry(
             component="DocVerifierAgent(eval)",
-            output_summary={"passed": True, "mocked": True},
+            output_summary={
+                "passed": True,
+                "mocked": True,
+                "docs": [
+                    {
+                        "file": v.file_name,
+                        "type": v.classified_type.value,
+                        "quality": v.quality.value,
+                        "confidence": 1.0,
+                        "llm_reasoning": "[Eval mode] Document type and quality taken directly from test_cases.json — no Groq Vision call made.",
+                    }
+                    for v in verified_docs
+                ],
+            },
         ))
 
         # Mock Agent 2 — build ParsedDocuments from content dict
@@ -249,7 +245,25 @@ class ClaimsPipeline:
 
         trace.add(TraceEntry(
             component="DocParserAgent(eval)",
-            output_summary={"parsed": len(parsed_docs), "mocked": True},
+            output_summary={
+                "parsed": len(parsed_docs),
+                "mocked": True,
+                "avg_confidence": 1.0,
+                "errors": [],
+                "extractions": [
+                    {
+                        "file": p.file_id,
+                        "patient": p.patient_name,
+                        "diagnosis": p.diagnosis,
+                        "doctor": p.doctor_name,
+                        "hospital": p.hospital_name,
+                        "total_amount": p.total_amount,
+                        "field_confidences": p.field_confidences,
+                        "llm_notes": "[Eval mode] Data taken directly from test_cases.json content block — no Groq Vision call made. Field confidences set to 1.0 for all provided fields.",
+                    }
+                    for p in parsed_docs
+                ],
+            },
         ))
 
         # Simulate component failure for TC011
@@ -277,6 +291,49 @@ class ClaimsPipeline:
             monthly_override=len(inp.claims_history),
         )
 
+    # ── Resolve treatment date from documents ────────────────────────────────────
+
+    @staticmethod
+    def _resolve_submission_fields(
+        submission: ClaimSubmission,
+        parsed_docs: list[ParsedDocument],
+    ) -> ClaimSubmission:
+        """
+        Auto-fill treatment_date and claimed_amount from parsed documents
+        when not manually provided by the user.
+
+        treatment_date: use the most recent document_date across all docs.
+                        Fallback: today.
+        claimed_amount: use the highest total_amount found across all docs
+                        (the bill total is what we want to reimburse).
+                        Fallback: 0 — rules engine will catch minimum amount failure.
+        """
+        from datetime import date as date_cls
+
+        updates = {}
+
+        # Resolve treatment_date
+        if not submission.treatment_date:
+            doc_dates = sorted(
+                [d.document_date for d in parsed_docs if d.document_date],
+                reverse=True,
+            )
+            resolved_date = doc_dates[0] if doc_dates else date_cls.today()
+            updates["treatment_date"] = resolved_date.isoformat()
+
+        # Resolve claimed_amount from bill total if not provided
+        if submission.claimed_amount is None:
+            amounts = [
+                d.total_amount
+                for d in parsed_docs
+                if d.total_amount and d.total_amount > 0
+            ]
+            updates["claimed_amount"] = max(amounts) if amounts else 0.0
+
+        if updates:
+            return submission.model_copy(update=updates)
+        return submission
+
     # ── Shared decision stages (Stages 3–6) ──────────────────────────────────
 
     async def _run_decision_stages(
@@ -290,7 +347,9 @@ class ClaimsPipeline:
         same_day_override: int | None = None,
         monthly_override: int | None = None,
     ) -> ClaimResponse:
-        t_str = submission.treatment_date
+        # Fallback in case date still unresolved (eval mode with no date in content)
+        from datetime import date as date_cls
+        t_str = submission.treatment_date or date_cls.today().isoformat()
         t_date = date.fromisoformat(t_str)
 
         # Stage 3: DB lookups
@@ -310,7 +369,7 @@ class ClaimsPipeline:
                 monthly_count = len(monthly)
                 duplicate = await is_duplicate_claim(
                     self._db, submission.member_id, t_str,
-                    submission.claimed_amount, submission.claim_category.value,
+                    submission.claim_category.value,
                 )
                 trace.add(TraceEntry(
                     component="DBLookup",

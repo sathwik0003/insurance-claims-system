@@ -33,7 +33,7 @@ class ClaimSubmission(BaseModel):
     member_id: str
     policy_id: str = "PLUM_GHI_2024"
     claim_category: ClaimCategory
-    treatment_date: str          # ISO: YYYY-MM-DD
+    treatment_date: str | None = None   # Optional — extracted from documents if not provided
     claimed_amount: float = Field(gt=0)
     hospital_name: str | None = None
     documents: list[UploadedDocument] = []

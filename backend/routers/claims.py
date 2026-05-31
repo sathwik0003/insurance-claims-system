@@ -23,7 +23,7 @@ router = APIRouter(prefix="/claims", tags=["claims"])
 async def submit_claim(
     member_id:      str = Form(...),
     claim_category: str = Form(...),
-    treatment_date: str = Form(...),
+    treatment_date: str | None = Form(None),   # optional — extracted from docs if omitted
     claimed_amount: float = Form(...),
     hospital_name:  str | None = Form(None),
     policy_id:      str = Form("PLUM_GHI_2024"),

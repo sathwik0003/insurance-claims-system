@@ -59,22 +59,28 @@ async def is_duplicate_claim(
     conn: asyncpg.Connection,
     member_id: str,
     treatment_date: str,
-    claimed_amount: float,
     claim_category: str,
 ) -> bool:
+    """
+    A duplicate is the same member claiming the same category on the same day
+    and the previous claim was not rejected. We intentionally exclude amount
+    from this check — minor rounding differences in extracted amounts would
+    otherwise allow the same claim through.
+    """
     row = await conn.fetchrow(
         """
         SELECT claim_id FROM claims
         WHERE member_id = $1
           AND treatment_date = $2
-          AND claimed_amount = $3
-          AND claim_category = $4
+          AND claim_category = $3
           AND decision != 'REJECTED'
         LIMIT 1
         """,
-        member_id, treatment_date, claimed_amount, claim_category,
+        member_id, treatment_date, claim_category,
     )
     return row is not None
+
+
 
 
 # ── Write ─────────────────────────────────────────────────────────────────────
@@ -141,7 +147,7 @@ async def save_claim(
             doc.file_id,
             doc.document_type.value,
             doc.quality.value,
-            doc.model_dump(mode="json"),                 # dict → jsonb via codec
+            doc.model_dump(mode="json"),
             doc.overall_confidence,
             now,
         )
