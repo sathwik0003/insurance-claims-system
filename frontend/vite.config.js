@@ -12,5 +12,6 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
     },
+    base: process.env.VITE_BASE_PATH || '/',
   },
 })
